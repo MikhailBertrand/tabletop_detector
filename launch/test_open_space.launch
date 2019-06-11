@@ -1,0 +1,181 @@
+<launch>
+  <arg name="launch_manager" default="true" />
+  <!-- set camera pointcloud topic name here -->
+  <arg name="cloud_input" default="/camera/sd/points" />
+  <arg name="sensor_frame" default="/base_link" />
+  <arg name="base_frame_id" default="base_link" />
+  <arg name="vital_rate" default="0.2" />
+  <!-- manager -->
+  <arg unless="$(arg launch_manager)"
+       name="manager" default="" />
+  <arg if="$(arg launch_manager)"
+       name="manager" default="tabletop_nodelet_manager" />
+  <node if="$(arg launch_manager)"
+        name="$(arg manager)" pkg="nodelet" type="nodelet"
+        args="manager" output="screen" respawn="true"/>
+  <!-- tabletop object detection -->
+  <group ns="tabletop_object_detector">
+    <node name="input_relay" pkg="nodelet" type="nodelet" respawn="true"
+          args="load jsk_topic_tools/Relay /$(arg manager)">
+      <remap from="~input" to="$(arg cloud_input)" />
+    </node>
+    <!-- filter pointcloud by z axis -->
+    <node name="passthrough" pkg="nodelet" type="nodelet" respawn="true"
+          args="load pcl/PassThrough /$(arg manager)" >
+      <remap from="~input" to="input_relay/output" />
+      <rosparam subst_value="true">
+        filter_field_name: z
+        <!-- height 0.08m to 1.20m -->
+        filter_limit_min: 0.08
+        filter_limit_max: 1.20
+        filter_limit_negative: False
+        keep_organized: true
+        input_frame: $(arg base_frame_id)
+      </rosparam>
+    </node>
+    <!-- use plane estimation algorithm -->
+    <node name="multi_plane_estimate" pkg="nodelet" type="nodelet" respawn="true"
+          args="load jsk_pcl/OrganizedMultiPlaneSegmentation /$(arg manager)" >
+      <remap from="~input" to="passthrough/output" />
+      <rosparam>
+        max_curvature: 0.01
+        estimate_normal: true
+        min_refined_area_threshold: 0.01  <!-- minimum refined area size -->
+        min_size: 1000  <!-- minimum point numbers -->
+      </rosparam>
+    </node>
+    <!-- This node can be abbreviated -->
+    <!-- extracts all types of planes as BoundingBoxArray -->
+    <!-- <node name="all_plane_decomposer"
+          pkg="nodelet" type="nodelet"  respawn="true"
+          args="load jsk_pcl/ClusterPointIndicesDecomposer /$(arg manager)">
+      <remap from="~input" to="input_relay/output" />
+      <remap from="~target" to="multi_plane_estimate/output"/>
+      <remap from="~align_planes" to="multi_plane_estimate/output_polygon"/>
+      <remap from="~align_planes_coefficients" to="multi_plane_estimate/output_coefficients"/>
+      <rosparam subst_value="true">
+        approximate_sync: true
+        queue_size: 300
+        publish_clouds: true
+        publish_tf: false
+        align_boxes: true
+        align_boxes_with_plane: true
+        use_pca: true
+        vital_rate: $(arg vital_rate)
+      </rosparam>
+    </node> -->
+    <!-- extract horizontal planes -->
+    <node name="table_extractor"
+          pkg="nodelet" type="nodelet"  respawn="true"
+          args="load jsk_pcl_utils/PlaneRejector /$(arg manager)">
+      <remap from="~input_inliers" to="multi_plane_estimate/output" />
+      <remap from="~input_polygons" to="multi_plane_estimate/output_refined_polygon" />
+      <remap from="~input_coefficients" to="multi_plane_estimate/output_refined_coefficients" />
+      <rosparam subst_value="true">
+        processing_frame_id: base_link
+        reference_axis: [0, 0, 1]  <!-- refer to z axis -->
+        angle: 0
+        use_inliers: true
+        vital_rate: $(arg vital_rate)
+      </rosparam>
+    </node>
+    <!-- Get horizontal plane pointclouds & BoundingBoxArray here -->
+    <node name="table_extractor_decomposer"
+          pkg="nodelet" type="nodelet"  respawn="true"
+          args="load jsk_pcl/ClusterPointIndicesDecomposer /$(arg manager)">
+      <remap from="~input" to="input_relay/output" />
+      <remap from="~target" to="table_extractor/output_inliers"/>
+      <remap from="~align_planes" to="table_extractor/output_polygons"/>
+      <remap from="~align_planes_coefficients" to="table_extractor/output_coefficients"/>
+      <rosparam subst_value="true">
+        approximate_sync: true
+        queue_size: 300
+        <!-- publish pointcloud for each cluster -->
+        publish_clouds: true
+        publish_tf: false
+        align_boxes: true
+        align_boxes_with_plane: true
+        use_pca: true
+        vital_rate: $(arg vital_rate)
+      </rosparam>
+    </node>
+    <!-- Filter horizontal planes by size (output: PolygonArray) -->
+    <node name="table_polygon_likelihood_filter"
+          pkg="nodelet" type="nodelet" respawn="true"
+          args="load jsk_pcl_utils/PolygonArrayAreaLikelihood /$(arg manager)">
+      <remap from="~input" to="table_extractor/output_polygons"/>
+      <rosparam subst_value="true">
+        area: 1.0
+        vital_rate: $(arg vital_rate)
+      </rosparam>
+    </node>
+    <!-- return only one table-like plane (output: polygon) -->
+    <!-- write your original alogorithm if necessary -->
+    <node name="filtering_table_polygon"
+          pkg="nodelet" type="nodelet" respawn="true"
+          args="load jsk_pcl_utils/PolygonArrayUnwrapper /$(arg manager)" >
+      <remap from="~input_polygons" to="table_polygon_likelihood_filter/output"/>
+      <remap from="~input_coefficients" to="table_extractor/output_coefficients" />
+      <rosparam>
+        use_likelihood: true
+      </rosparam>
+    </node>
+    <!-- Already applied ? -->
+    <!-- apply voxel filter here -->
+    <node name="voxel_filter"
+          pkg="nodelet" type="nodelet" respawn="true"
+          args="load pcl/VoxelGrid /$(arg manager)" >
+      <remap from="~input" to="input_relay/output"/>
+      <rosparam>
+        leaf_size: 0.005
+        filter_limit_max: 3.0
+      </rosparam>
+    </node>
+    <!-- extracts tabletop pointcloud -->
+    <node name="table_surface_object_extraction"
+          pkg="nodelet" type="nodelet" respawn="true"
+          args="load jsk_pcl/MultiPlaneExtraction /$(arg manager)">
+      <remap from="~input" to="voxel_filter/output"/>
+      <remap from="~input_polygons" to="polygon_to_polygon_array/output_polygons"/>
+      <remap from="~input_coefficients" to="polygon_to_polygon_array/output_coefficients"/>
+      <rosparam subst_value="true">
+        use_indices: false
+        use_sensor_frame: true
+        sensor_frame: $(arg sensor_frame)
+        <!-- parameters for height range above the table surface (meter) -->
+        min_height: 0.015
+        max_height: 0.3
+        <!-- value changed due to some internal bug -->
+        <!-- min_height: -0.3
+        max_height: -0.015 -->
+        vital_rate: $(arg vital_rate)
+      </rosparam>
+    </node>
+    <!-- clusters tabletop pointcloud -->
+    <node pkg="nodelet" type="nodelet" respawn="true"
+          name="clustering"
+          args="load jsk_pcl/EuclideanClustering /$(arg manager)"
+          clear_params="true">
+      <remap from="~input" to="table_surface_object_extraction/output" />
+      <rosparam>
+        <!-- max distance for the points to be regarded as same cluster -->
+        tolerance: 0.03
+      </rosparam>
+    </node>
+    <!-- create BoundingBoxArray based on clustered tabletop objects -->
+    <node pkg="nodelet" type="nodelet" respawn="true"
+          name="cluster_decomposer"
+          args="load jsk_pcl/ClusterPointIndicesDecomposer /$(arg manager)"
+          clear_params="true">
+      <remap from="~input" to="voxel_filter/output" />
+      <remap from="~target" to="clustering/output" />
+      <remap from="~align_planes" to="polygon_to_polygon_array/output_polygons" />
+      <remap from="~align_planes_coefficients" to="polygon_to_polygon_array/output_coefficients" />
+      <rosparam>
+        align_boxes: true
+        align_boxes_with_plane: true
+        use_pca: true
+      </rosparam>
+    </node>
+  </group>
+</launch>
