@@ -1,0 +1,8 @@
+<launch>
+  <node pkg="tabletop_detector" type="save_image.py" name="save_image"
+        output="screen">
+    <param name="image_topic" value="/kinect2/hd/image_color" />
+    <param name="time_span" value="2" />
+    <param name="save_directory" value="/home/gisen/ros/data/saved_image/" />
+  </node>
+</launch>
