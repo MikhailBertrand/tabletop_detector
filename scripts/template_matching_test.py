@@ -7,7 +7,7 @@ import cv2
 # All the 6 methods for comparison in a list
 # METHODS = ['cv2.TM_CCOEFF', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCORR',
 #            'cv2.TM_CCORR_NORMED', 'cv2.TM_SQDIFF', 'cv2.TM_SQDIFF_NORMED']
-METHODS = ['cv2.TM_CCORR_NORMED']
+METHODS = ['cv2.TM_SQDIFF_NORMED']
 
 
 def template_match_test_all(target_image_directory):
@@ -27,7 +27,7 @@ def template_match_test_all(target_image_directory):
         for item in METHODS:
             img = img2.copy()
             meth = eval(item)
-            top_left_r, bottom_right_r = return_matching_result(img, template_red, meth)
+            top_left_r, bottom_right_r = return_matching_result(img, template_red, meth, threshold=None)
             top_left_g, bottom_right_g = return_matching_result(img, template_green, meth)
             if top_left_r:
                 cv2.rectangle(img_color, top_left_r, bottom_right_r, (0, 0, 255), 2)
@@ -39,19 +39,19 @@ def template_match_test_all(target_image_directory):
             # cv2.imwrite(save_file, img)
 
 
-def return_matching_result(img, temp_img, meth, min_thres=None, max_thres=None):
+def return_matching_result(img, temp_img, meth, threshold=None):
     width, height = temp_img.shape[::-1]
     res = cv2.matchTemplate(img, temp_img, meth)
     min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
     if meth in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
-        if min_thres and min_val <= min_thres:
+        if threshold and min_val <= threshold:
             pass
         else:
             top_left = min_loc
             bottom_right = (top_left[0] + width, top_left[1] + height)
             return top_left, bottom_right
     else:
-        if max_thres and max_val >= max_thres:
+        if threshold and max_val >= threshold:
             pass
         else:
             top_left = max_loc
@@ -61,7 +61,7 @@ def return_matching_result(img, temp_img, meth, min_thres=None, max_thres=None):
 
 
 if __name__ == '__main__':
-    directory = '/home/gisen/ros/data/saved_image/1533/'
+    directory = '/home/gisen/ros/data/saved_image/1525/'
     for method in METHODS:
         try:
             os.mkdir(directory + method[4:] + '_result')
