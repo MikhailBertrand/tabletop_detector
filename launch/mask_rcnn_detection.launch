@@ -1,0 +1,37 @@
+<launch>
+
+  <arg name="group_name" default="detection_result" />
+  <arg name="launch_manager" default="true" />
+  <arg name="gpu" default="0" />
+  <arg name="input_image" default="/camera/hd/image_color" />
+  <arg name="cloud_input" default="/camera/hd/points" />
+  <arg name="camera_info" default="/camera/hd/camera_info" />
+  <arg name="mask_cluster" default="/mask_rcnn_instance_segmentation/output/cluster_indices" />
+  <!-- <arg name="mask_cluster" default="$(arg group_name)/mask_rcnn_instance_segmentation/output/cluster_indices" /> -->
+
+  <arg if="$(arg launch_manager)"
+       name="manager" default="detection_nodelet_manager" />
+  <node if="$(arg launch_manager)"
+       name="$(arg manager)" pkg="nodelet" type="nodelet"
+       args="manager" output="screen" respawn="true"/>
+
+  <include file="$(find tabletop_detector)/launch/mask_rcnn_instance_segmentation.launch" />
+
+  <group ns="$(arg group_name)">
+
+    <node name="input_relay" pkg="nodelet" type="nodelet" respawn="true"
+          args="load jsk_topic_tools/Relay /$(arg manager)">
+      <remap from="~input" to="$(arg cloud_input)" />
+    </node>
+
+    <node pkg="nodelet" type="nodelet" respawn="true"
+          name="cluster_result"
+          args="load jsk_pcl/ClusterPointIndicesDecomposer /$(arg manager)"
+          clear_params="true">
+      <remap from="~input" to="input_relay/output" />
+      <remap from="~target" to="$(arg mask_cluster)" />
+      <remap from="~align_planes" to="/tabletop_object_detector/polygon_to_polygon_array/output_polygons"/>
+      <remap from="~align_planes_coefficients" to="/tabletop_object_detector/polygon_to_polygon_array/output_coefficients"/>
+    </node>
+  </group>
+</launch>

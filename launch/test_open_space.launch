@@ -132,6 +132,12 @@
         filter_limit_max: 3.0
       </rosparam>
     </node>
+    <node name="polygon_to_polygon_array"
+          pkg="nodelet" type="nodelet" respawn="true"
+          args="load jsk_pcl_utils/PolygonArrayWrapper /$(arg manager)" >
+      <remap from="~input_polygon" to="filtering_table_polygon/output_polygon" />
+      <remap from="~input_coefficients" to="filtering_table_polygon/output_coefficients" />
+    </node>
     <!-- extracts tabletop pointcloud -->
     <node name="table_surface_object_extraction"
           pkg="nodelet" type="nodelet" respawn="true"
