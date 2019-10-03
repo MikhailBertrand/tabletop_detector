@@ -1,7 +1,8 @@
+<!-- File orignally from jsk_recognition -->
 <launch>
 
   <arg name="gpu" default="0" />
-  <arg name="input_image" default="/camera/hd/image_color" />
+  <arg name="input_image" default="/camera/rgb/image_rect_color" />
 
   <node name="mask_rcnn_instance_segmentation"
         pkg="jsk_perception" type="mask_rcnn_instance_segmentation.py"
