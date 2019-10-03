@@ -1,1 +1,3 @@
-### Everything is TODO for now
+### 廃棄孔
+
+プログラムの端材置き場
