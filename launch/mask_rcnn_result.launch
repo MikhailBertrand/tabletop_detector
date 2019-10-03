@@ -1,0 +1,63 @@
+<launch>
+
+  <arg name="launch_manager" default="true" />
+  <arg name="gpu" default="0" />
+  <arg name="input_image" default="/camera/rgb/image_rect_color" />
+  <arg name="cloud_input" default="/camera/depth_registered/points" />
+  <arg name="camera_info" default="/camera/depth/camera_info" />
+
+  <arg if="$(arg launch_manager)"
+       name="manager" default="detection_nodelet_manager" />
+
+  <include file="$(find tabletop_detector)/launch/mask_rcnn_instance_segmentation.launch" />
+
+  <group ns="mask_rcnn_result">
+<!--
+    <node name="mask_to_cloud"
+          pkg="jsk_pcl_ros" type="mask_image_filter"
+          clear_params="true">
+      <remap from="~input" to="$(arg cloud_input)" />
+      <remap from="~input/mask" to="$(arg mask_image)" />
+      <remap from="~input/camera_info" to="$(arg camera_info)" />
+    </node> -->
+
+    <node name="mask_image_filter"
+          pkg="nodelet" type="nodelet" respawn="true"
+          args="load jsk_pcl/MaskImageFilter /$(arg manager)" >
+      <remap from="~input" to="$(arg cloud_input)" />
+      <remap from="~input/mask" to="$(arg mask_image)" />
+      <remap from="~input/camera_info" to="$(arg camera_info)" />
+    </node>
+
+    <!-- Node for changing point indices into point cloud -->
+
+    <!-- Cluster detected objects -->
+    <node pkg="nodelet" type="nodelet" respawn="true"
+          name="clustering"
+          args="load jsk_pcl/EuclideanClustering /$(arg manager)"
+          clear_params="true">
+      <remap from="~input" to="table_surface_object_extraction/output" />
+      <rosparam>
+        <!-- max distance for the points to be regarded as same cluster -->
+        tolerance: 0.03
+      </rosparam>
+    </node>
+    <!-- create BoundingBoxArray based on clustered tabletop objects -->
+    <node pkg="nodelet" type="nodelet" respawn="true"
+          name="cluster_decomposer"
+          args="load jsk_pcl/ClusterPointIndicesDecomposer /$(arg manager)"
+          clear_params="true">
+      <remap from="~input" to="voxel_filter/output" />
+      <remap from="~target" to="clustering/output" />
+      <remap from="~align_planes" to="polygon_to_polygon_array/output_polygons" />
+      <remap from="~align_planes_coefficients" to="polygon_to_polygon_array/output_coefficients" />
+      <rosparam>
+        align_boxes: true
+        align_boxes_with_plane: true
+        use_pca: true
+      </rosparam>
+    </node>
+
+
+  </group>
+</launch>
