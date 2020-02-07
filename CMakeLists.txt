@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8.3)
 project(tabletop_detector)
 
 find_package(catkin REQUIRED COMPONENTS
-  roscppp
+  roscpp
   sensor_msgs
   pcl_conversions
   message_filters
